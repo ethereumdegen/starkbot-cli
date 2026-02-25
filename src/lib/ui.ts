@@ -21,7 +21,7 @@ export function banner() {
 }
 
 export function spinner(text: string): Ora {
-  return ora({ text, color: "magenta" });
+  return ora({ text, color: "magenta", discardStdin: false });
 }
 
 export function printError(msg: string) {

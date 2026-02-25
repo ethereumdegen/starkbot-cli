@@ -15,7 +15,7 @@ export class StatusTracker {
   private paused = false;
 
   constructor() {
-    this.spinner = ora({ color: "magenta", spinner: "dots" });
+    this.spinner = ora({ color: "magenta", spinner: "dots", discardStdin: false });
   }
 
   handleEvent(event: SseEvent) {
