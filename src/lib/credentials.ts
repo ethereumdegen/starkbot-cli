@@ -9,6 +9,7 @@ export interface Credentials {
   gateway_token?: string;
   instance_domain?: string;
   jwt_expires_at?: string;
+  mode?: "x" | "external";
 }
 
 const CONFIG_DIR = join(homedir(), ".starkbot-cli");
@@ -51,6 +52,7 @@ export function clearCredentials(): void {
 
 /** Check if the stored JWT is expired (with 5 min buffer) */
 export function isJwtExpired(creds: Credentials): boolean {
+  if (creds.mode === "external") return false;
   if (!creds.jwt) return true;
   try {
     // Decode JWT payload (base64url)
@@ -73,6 +75,12 @@ export function requireCredentials(): Credentials {
   const creds = loadCredentials();
   if (!creds) {
     throw new Error("Not logged in. Run `starkbot login` first.");
+  }
+  if (creds.mode === "external") {
+    if (!creds.gateway_token || !creds.instance_domain) {
+      throw new Error("External credentials incomplete. Run `starkbot login` to reconfigure.");
+    }
+    return creds;
   }
   if (isJwtExpired(creds)) {
     throw new Error("Session expired. Run `starkbot login` to re-authenticate.");

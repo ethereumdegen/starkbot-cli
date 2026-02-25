@@ -6,12 +6,12 @@ const program = new Command();
 program
   .name("starkbot")
   .description("CLI for Starkbot — login, provision, and chat with your bot")
-  .version("0.1.0")
+  .version("0.3.0")
   .addHelpCommand("help", "Show help for a command");
 
 program
   .command("login")
-  .description("Login with your X (Twitter) account")
+  .description("Login with X or connect to an external instance")
   .action(async () => {
     const { loginCommand } = await import("./commands/login.js");
     await loginCommand();

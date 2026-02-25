@@ -24,6 +24,7 @@ export async function runOAuthFlow(): Promise<AuthResult> {
   return new Promise<AuthResult>((resolve, reject) => {
     let server: Server;
     let timeout: ReturnType<typeof setTimeout>;
+    let loginSpin: ReturnType<typeof spinner> | null = null;
     const csrfNonce = randomBytes(16).toString("hex");
 
     server = createServer((req, res) => {
@@ -58,6 +59,7 @@ export async function runOAuthFlow(): Promise<AuthResult> {
             </html>
           `);
 
+          loginSpin?.stop();
           clearTimeout(timeout);
           server.close();
           resolve({
@@ -68,6 +70,7 @@ export async function runOAuthFlow(): Promise<AuthResult> {
         } else {
           res.writeHead(400, { "Content-Type": "text/html" });
           res.end("<h1>Login failed</h1><p>Missing JWT or username in callback.</p>");
+          loginSpin?.stop();
           clearTimeout(timeout);
           server.close();
           reject(new Error("OAuth callback missing jwt or username"));
@@ -107,7 +110,7 @@ export async function runOAuthFlow(): Promise<AuthResult> {
           });
         });
 
-        const loginSpin = spinner("Opening browser for X login...");
+        loginSpin = spinner("Opening browser for X login...");
         loginSpin.start();
 
         // Open browser
@@ -116,11 +119,12 @@ export async function runOAuthFlow(): Promise<AuthResult> {
 
         // Timeout after 5 minutes
         timeout = setTimeout(() => {
-          loginSpin.fail("Login timed out (5 minutes)");
+          loginSpin?.fail("Login timed out (5 minutes)");
           server.close();
           reject(new Error("Login timed out"));
         }, 5 * 60 * 1000);
       } catch (err) {
+        loginSpin?.stop();
         printError("Failed to start login");
         server.close();
         reject(err);

@@ -14,7 +14,7 @@ export async function wizardCommand() {
   // Step 1: Login / account selection
   let creds = loadCredentials();
   if (!creds || isJwtExpired(creds)) {
-    console.log(bold("  Step 1: Login with X\n"));
+    console.log(bold("  Step 1: Login\n"));
     await loginCommand();
     console.log();
   } else {
@@ -32,11 +32,32 @@ export async function wizardCommand() {
 
     if (accountAction === "signout") {
       await logoutCommand();
-      console.log(bold("\n  Login with X\n"));
+      console.log(bold("\n  Login\n"));
       await loginCommand();
       console.log();
       creds = loadCredentials();
     }
+  }
+
+  // For external mode, skip provisioning steps and go straight to chat
+  creds = loadCredentials();
+  if (creds?.mode === "external") {
+    if (creds.gateway_token && creds.instance_domain) {
+      const { startChat } = await inquirer.prompt([
+        {
+          type: "confirm",
+          name: "startChat",
+          message: "Start chatting with your bot?",
+          default: true,
+        },
+      ]);
+
+      if (startChat) {
+        console.log();
+        await chatReplCommand();
+      }
+    }
+    return;
   }
 
   // Step 2: Check account info
