@@ -1,10 +1,11 @@
 {
   "name": "starkbot-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI for Starkbot — login, provision, and chat with your bot from the terminal",
   "type": "module",
   "bin": {
-    "starkbot": "./dist/index.js"
+    "starkbot": "dist/index.js",
+    "starkbot-cli": "dist/index.js"
   },
   "scripts": {
     "build": "tsup",
@@ -26,7 +27,7 @@
   "author": "ethereumdegen",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ethereumdegen/starkbot-cli.git"
+    "url": "git+https://github.com/ethereumdegen/starkbot-cli.git"
   },
   "homepage": "https://github.com/ethereumdegen/starkbot-cli#readme",
   "bugs": {
