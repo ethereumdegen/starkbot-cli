@@ -1,6 +1,6 @@
 import { requireCredentials, updateCredentials } from "../lib/credentials.js";
 import { FlashClient } from "../lib/flash-client.js";
-import { spinner, printSuccess, printError, printWarning, dim } from "../lib/ui.js";
+import { spinner, printSuccess, printError, dim } from "../lib/ui.js";
 
 export async function provisionCommand() {
   const creds = requireCredentials();
@@ -11,19 +11,8 @@ export async function provisionCommand() {
   spin.start();
 
   try {
-    const me = await client.getMe();
-
-    const creditBalance = me.credits?.balance ?? 0;
-    const hasSubscription = me.subscription && me.subscription.status === "active";
-    if (!hasSubscription && creditBalance <= 0) {
-      spin.stop();
-      printWarning("No credits available. Run `starkbot subscribe` to add credits first.");
-      return;
-    }
-
-    // Always call the backend — it checks whether the infra service is
-    // actually running and re-provisions if the old deployment was removed.
-    // The DB may still say "active" with a stale domain after suspension.
+    // Let the backend handle credit validation — it enforces a $1.50 minimum
+    // and returns a clear error if the tenant can't afford to provision.
     spin.text = "Provisioning your Starkbot instance...";
 
     const result = await client.provision();

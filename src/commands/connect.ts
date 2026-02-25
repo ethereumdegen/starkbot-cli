@@ -76,30 +76,26 @@ export async function connectCommand(opts: ConnectOptions = {}) {
     }
   } catch (err: any) {
     spin.fail("Connection failed");
-    if (err.message?.includes("No CLI gateway token found")) {
-      printWarning("This instance was provisioned before CLI support — no gateway token on file.");
-      console.log(dim("  You can grab your token and domain from the instance dashboard.\n"));
+    printWarning("Could not auto-fetch gateway credentials — you can enter them manually.");
+    console.log(dim(`  (${err.message})\n`));
 
-      const answers = await inquirer.prompt([
-        {
-          type: "input",
-          name: "token",
-          message: "Gateway token:",
-          validate: (v: string) => v.trim().length > 0 || "Token is required",
-        },
-        {
-          type: "input",
-          name: "domain",
-          message: "Instance domain (e.g. my-bot.starkbot.cloud):",
-          default: creds.instance_domain || undefined,
-          validate: (v: string) => v.trim().length > 0 || "Domain is required",
-        },
-      ]);
+    const answers = await inquirer.prompt([
+      {
+        type: "input",
+        name: "token",
+        message: "Gateway token:",
+        validate: (v: string) => v.trim().length > 0 || "Token is required",
+      },
+      {
+        type: "input",
+        name: "domain",
+        message: "Instance domain (e.g. my-bot.starkbot.cloud):",
+        default: creds.instance_domain || undefined,
+        validate: (v: string) => v.trim().length > 0 || "Domain is required",
+      },
+    ]);
 
-      // Re-run connect with the provided values
-      return connectCommand({ token: answers.token.trim(), domain: answers.domain.trim() });
-    } else {
-      printError(err.message);
-    }
+    // Re-run connect with the provided values
+    return connectCommand({ token: answers.token.trim(), domain: answers.domain.trim() });
   }
 }

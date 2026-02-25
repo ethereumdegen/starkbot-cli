@@ -4,7 +4,6 @@ import { FlashClient, type InstanceSummary } from "../lib/flash-client.js";
 import { banner, printSuccess, printWarning, dim, bold, spinner } from "../lib/ui.js";
 import { loginCommand } from "./login.js";
 import { logoutCommand } from "./logout.js";
-import { subscribeCommand } from "./subscribe.js";
 import { provisionCommand } from "./provision.js";
 import { connectCommand } from "./connect.js";
 import { chatReplCommand } from "./chat.js";
@@ -124,35 +123,7 @@ export async function wizardCommand() {
     console.log();
   }
 
-  // Step 4: Credits check
-  const creditBalance = me.credits?.balance ?? 0;
-  const hasCredits = creditBalance > 0;
-  const hasSubscription = me.subscription && me.subscription.status === "active";
-
-  if (!hasCredits && !hasSubscription) {
-    console.log(bold("\n  Subscribe\n"));
-    await subscribeCommand();
-
-    // Re-check after subscribe
-    try {
-      me = await client.getMe();
-    } catch {
-      return;
-    }
-
-    const recheckCredits = me.credits?.balance ?? 0;
-    const recheckSub = me.subscription && me.subscription.status === "active";
-    if (recheckCredits <= 0 && !recheckSub) {
-      printWarning("Credits required to continue. Run `starkbot subscribe` when ready.");
-      return;
-    }
-    console.log();
-  } else {
-    const formattedCredits = (creditBalance / 1_000_000).toFixed(2);
-    printSuccess(`$${formattedCredits} credits available`);
-  }
-
-  // Step 5: Provision (always run — backend verifies infra is actually up)
+  // Step 4: Provision (backend enforces credit requirements)
   console.log(bold("\n  Provision your bot\n"));
   await provisionCommand();
   console.log();

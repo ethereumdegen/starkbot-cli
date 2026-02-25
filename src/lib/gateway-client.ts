@@ -44,6 +44,10 @@ export interface SseEvent {
   type: string;
   content?: string;
   tool_name?: string;
+  label?: string;
+  agent_subtype?: string;
+  error?: string;
+  task_name?: string;
 }
 
 export class GatewayClient {

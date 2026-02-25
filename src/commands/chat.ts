@@ -1,7 +1,9 @@
-import { createInterface } from "node:readline";
-import { requireCredentials } from "../lib/credentials.js";
+import { createInterface } from "node:readline/promises";
+import { requireCredentials, updateCredentials, loadCredentials } from "../lib/credentials.js";
+import { FlashClient } from "../lib/flash-client.js";
 import { GatewayClient, type SseEvent } from "../lib/gateway-client.js";
-import { prefix, printError, dim, info } from "../lib/ui.js";
+import { StatusTracker } from "../lib/status.js";
+import { prefix, printError, dim, info, printSuccess, printWarning, warn } from "../lib/ui.js";
 
 function requireGateway() {
   const creds = requireCredentials();
@@ -16,48 +18,76 @@ function requireGateway() {
   );
 }
 
-function printSseEvent(event: SseEvent) {
-  switch (event.type) {
-    case "tool_call": {
-      const name = event.tool_name ?? "unknown";
-      process.stdout.write(dim(`[${name}...] `));
-      break;
+function isAuthError(err: any): boolean {
+  return err?.message?.includes("HTTP 401") || err?.message?.includes("Invalid gateway token");
+}
+
+/** Try to auto-refresh the gateway token using the stored JWT */
+async function tryRefreshToken(): Promise<GatewayClient | null> {
+  const creds = loadCredentials();
+  if (!creds?.jwt) return null;
+
+  try {
+    const client = new FlashClient(creds.jwt);
+    const { token, domain } = await client.getGatewayToken();
+    updateCredentials({ gateway_token: token, instance_domain: domain });
+    const gw = new GatewayClient(`https://${domain}`, token);
+    const ok = await gw.ping();
+    if (ok) {
+      printSuccess("Gateway token refreshed automatically.");
+      return gw;
     }
-    case "tool_result":
-      // Silently consume
-      break;
-    case "text":
-      if (event.content) {
-        process.stdout.write(event.content);
-      }
-      break;
-    case "done":
-      break;
+  } catch {
+    // auto-refresh failed, caller will prompt user
   }
+  return null;
 }
 
 /** One-shot message mode */
 export async function chatOneShotCommand(message: string) {
-  const gw = requireGateway();
+  let gw = requireGateway();
+  const status = new StatusTracker();
 
   process.stdout.write(`${prefix.agent} `);
   try {
-    await gw.chatStream(message, printSseEvent);
+    await gw.chatStream(message, (event) => status.handleEvent(event));
     console.log();
   } catch (err: any) {
+    status.finish();
     console.log();
-    printError(err.message);
+    if (isAuthError(err)) {
+      printWarning("Gateway token is invalid or expired. Attempting to refresh...");
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        gw = refreshed;
+        process.stdout.write(`${prefix.agent} `);
+        const status2 = new StatusTracker();
+        try {
+          await gw.chatStream(message, (event) => status2.handleEvent(event));
+          console.log();
+          return;
+        } catch (retryErr: any) {
+          status2.finish();
+          console.log();
+          printError(retryErr.message);
+        }
+      } else {
+        printError("Could not refresh token. Run `starkbot connect` to set a new gateway token.");
+      }
+    } else {
+      printError(err.message);
+    }
     process.exit(1);
   }
 }
 
 /** Interactive REPL mode */
 export async function chatReplCommand() {
-  const gw = requireGateway();
+  let gw = requireGateway();
 
   console.log(
     dim(
-      "Starkbot CLI — type a message, /new to reset, /sessions to list, /quit to exit"
+      "Starkbot CLI — type a message, /new to reset, /sessions to list, /connect to refresh token, /quit to exit"
     )
   );
 
@@ -67,116 +97,156 @@ export async function chatReplCommand() {
     terminal: true,
   });
 
-  const prompt = () => {
-    rl.question(`${prefix.you} `, async (input) => {
-      const trimmed = input.trim();
-      if (!trimmed) {
-        prompt();
-        return;
-      }
+  // Use a proper async loop so the REPL stays alive across long-running requests
+  let running = true;
+  while (running) {
+    let input: string;
+    try {
+      input = await rl.question(`${prefix.you} `);
+    } catch {
+      // stdin closed (e.g. Ctrl+D)
+      break;
+    }
 
-      switch (trimmed) {
-        case "/quit":
-        case "/exit":
-        case "/q":
-          rl.close();
-          console.log(dim("Goodbye!"));
-          return;
+    const trimmed = input.trim();
+    if (!trimmed) continue;
 
-        case "/new": {
-          try {
-            const resp = await gw.newSession();
-            console.log(
-              `${prefix.system} New session created (id: ${resp.session_id})`
-            );
-          } catch (err: any) {
-            console.log(`${prefix.error} ${err.message}`);
-          }
-          prompt();
-          return;
-        }
+    switch (trimmed) {
+      case "/quit":
+      case "/exit":
+      case "/q":
+        running = false;
+        console.log(dim("Goodbye!"));
+        break;
 
-        case "/sessions": {
-          try {
-            const resp = await gw.listSessions();
-            if (resp.sessions.length === 0) {
-              console.log(`${prefix.system} No sessions found`);
-            } else {
-              console.log(`${prefix.system} Sessions:`);
-              for (const s of resp.sessions) {
-                console.log(
-                  `  ${info(s.session_key)} | ${s.message_count} msgs | last active: ${dim(s.last_activity_at)}`
-                );
-              }
-            }
-          } catch (err: any) {
-            console.log(`${prefix.error} ${err.message}`);
-          }
-          prompt();
-          return;
-        }
-
-        case "/help":
-          console.log(`${prefix.system} Commands:`);
-          console.log(`  ${info("/new")}      — Start a new session`);
-          console.log(`  ${info("/sessions")} — List sessions`);
+      case "/new": {
+        try {
+          const resp = await gw.newSession();
           console.log(
-            `  ${info("/history <id>")} — Show message history`
+            `${prefix.system} New session created (id: ${resp.session_id})`
           );
-          console.log(`  ${info("/quit")}     — Exit`);
-          prompt();
-          return;
+        } catch (err: any) {
+          console.log(`${prefix.error} ${err.message}`);
+        }
+        break;
+      }
 
-        default:
-          if (trimmed.startsWith("/history")) {
-            const parts = trimmed.split(/\s+/);
-            if (parts.length < 2) {
+      case "/sessions": {
+        try {
+          const resp = await gw.listSessions();
+          if (resp.sessions.length === 0) {
+            console.log(`${prefix.system} No sessions found`);
+          } else {
+            console.log(`${prefix.system} Sessions:`);
+            for (const s of resp.sessions) {
               console.log(
-                `${prefix.system} Usage: /history <session_id>`
+                `  ${info(s.session_key)} | ${s.message_count} msgs | last active: ${dim(s.last_activity_at)}`
               );
-            } else {
-              const sid = parseInt(parts[1], 10);
-              if (isNaN(sid)) {
-                console.log(`${prefix.error} Invalid session ID: ${parts[1]}`);
+            }
+          }
+        } catch (err: any) {
+          console.log(`${prefix.error} ${err.message}`);
+        }
+        break;
+      }
+
+      case "/connect": {
+        console.log(`${prefix.system} Refreshing gateway token...`);
+        const refreshed = await tryRefreshToken();
+        if (refreshed) {
+          gw = refreshed;
+        } else {
+          console.log(`${prefix.system} Auto-refresh failed. Enter a new gateway token manually.`);
+          try {
+            const newToken = (await rl.question(`${prefix.system} Gateway token: `)).trim();
+            if (newToken) {
+              const creds = requireCredentials();
+              const domain = creds.instance_domain!;
+              updateCredentials({ gateway_token: newToken });
+              gw = new GatewayClient(`https://${domain}`, newToken);
+              const ok = await gw.ping();
+              if (ok) {
+                printSuccess(`Reconnected to ${domain}`);
               } else {
-                try {
-                  const resp = await gw.getHistory(sid);
-                  for (const m of resp.messages) {
-                    const p =
-                      m.role === "user"
-                        ? prefix.you
-                        : m.role === "assistant"
-                          ? prefix.agent
-                          : dim(`${m.role}>`);
-                    console.log(`${p} ${m.content}`);
-                  }
-                } catch (err: any) {
-                  console.log(`${prefix.error} ${err.message}`);
+                printWarning("Token saved but instance is not responding.");
+              }
+            } else {
+              console.log(`${prefix.system} Cancelled.`);
+            }
+          } catch {
+            // stdin closed during token entry
+          }
+        }
+        break;
+      }
+
+      case "/help":
+        console.log(`${prefix.system} Commands:`);
+        console.log(`  ${info("/new")}      — Start a new session`);
+        console.log(`  ${info("/sessions")} — List sessions`);
+        console.log(
+          `  ${info("/history <id>")} — Show message history`
+        );
+        console.log(`  ${info("/connect")}  — Refresh gateway token`);
+        console.log(`  ${info("/quit")}     — Exit`);
+        break;
+
+      default:
+        if (trimmed.startsWith("/history")) {
+          const parts = trimmed.split(/\s+/);
+          if (parts.length < 2) {
+            console.log(
+              `${prefix.system} Usage: /history <session_id>`
+            );
+          } else {
+            const sid = parseInt(parts[1], 10);
+            if (isNaN(sid)) {
+              console.log(`${prefix.error} Invalid session ID: ${parts[1]}`);
+            } else {
+              try {
+                const resp = await gw.getHistory(sid);
+                for (const m of resp.messages) {
+                  const p =
+                    m.role === "user"
+                      ? prefix.you
+                      : m.role === "assistant"
+                        ? prefix.agent
+                        : dim(`${m.role}>`);
+                  console.log(`${p} ${m.content}`);
                 }
+              } catch (err: any) {
+                console.log(`${prefix.error} ${err.message}`);
               }
             }
-            prompt();
-            return;
           }
+          break;
+        }
 
-          // Send message with streaming
-          process.stdout.write(`${prefix.agent} `);
-          try {
-            await gw.chatStream(trimmed, printSseEvent);
-            console.log();
-          } catch (err: any) {
-            console.log();
+        // Send message with streaming
+        process.stdout.write(`${prefix.agent} `);
+        try {
+          const status = new StatusTracker();
+          await gw.chatStream(trimmed, (event) => status.handleEvent(event));
+          console.log();
+        } catch (err: any) {
+          console.log();
+          if (isAuthError(err)) {
+            console.log(`${prefix.error} ${err.message}`);
+            console.log(warn("  Gateway token is invalid or expired. Attempting to refresh..."));
+            const refreshed = await tryRefreshToken();
+            if (refreshed) {
+              gw = refreshed;
+              console.log(dim("  Try your message again."));
+            } else {
+              console.log(warn("  Auto-refresh failed. Use /connect to enter a new token."));
+            }
+          } else {
             console.log(`${prefix.error} ${err.message}`);
           }
-          prompt();
-      }
-    });
-  };
+        }
+    }
+  }
 
-  prompt();
-
-  // Handle Ctrl+C gracefully
-  rl.on("close", () => {
-    process.exit(0);
-  });
+  rl.close();
+  process.exit(0);
 }
