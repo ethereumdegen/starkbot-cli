@@ -177,6 +177,10 @@ export interface MeResponse {
     days_remaining: number;
     is_expiring_soon: boolean;
   } | null;
+  credits: {
+    balance: number;
+    last_active_at: string | null;
+  } | null;
   premium: {
     status: string;
     expires_at: string | null;

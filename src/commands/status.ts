@@ -18,19 +18,25 @@ export async function statusCommand() {
   printKeyValue("Display name", me.user.display_name);
   printKeyValue("Wallet", me.user.wallet_address);
 
-  // Subscription
-  console.log(bold("\n  Subscription"));
-  if (me.subscription) {
-    const statusColor = me.subscription.status === "active" ? success : warn;
-    printKeyValue("Status", statusColor(me.subscription.status));
-    printKeyValue("Expires", me.subscription.expires_at);
-    printKeyValue("Days remaining", String(me.subscription.days_remaining));
-    if (me.subscription.is_expiring_soon) {
-      console.log(warn("    ⚠ Subscription expiring soon!"));
+  // Credits
+  console.log(bold("\n  Credits"));
+  const creditBalance = me.credits?.balance ?? 0;
+  const formattedCredits = (creditBalance / 1_000_000).toFixed(2);
+  const creditColor = creditBalance > 0 ? success : warn;
+  printKeyValue("Balance", creditColor(`$${formattedCredits}`));
+  if (me.credits?.last_active_at) {
+    const lastActive = new Date(me.credits.last_active_at);
+    const daysSinceActive = Math.floor((Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24));
+    const lastActiveStr = lastActive.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    printKeyValue("Last active", `${lastActiveStr} (${daysSinceActive}d ago)`);
+    if (daysSinceActive >= 30) {
+      console.log(error("    ⚠ Inactive for 30+ days — instance will be suspended."));
+    } else if (daysSinceActive >= 25) {
+      console.log(warn("    ⚠ Approaching 30-day inactivity limit — instance may be suspended soon."));
     }
-  } else {
-    printKeyValue("Status", dim("none"));
-    console.log(dim("    Run `starkbot subscribe` to get started."));
+  }
+  if (creditBalance <= 0) {
+    console.log(warn("    ⚠ No credits remaining. Run `starkbot subscribe` to add credits."));
   }
 
   // Active Instance

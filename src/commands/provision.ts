@@ -13,19 +13,17 @@ export async function provisionCommand() {
   try {
     const me = await client.getMe();
 
-    if (me.tenant.status === "active" && me.tenant.domain) {
+    const creditBalance = me.credits?.balance ?? 0;
+    const hasSubscription = me.subscription && me.subscription.status === "active";
+    if (!hasSubscription && creditBalance <= 0) {
       spin.stop();
-      printSuccess(`Instance already running at ${me.tenant.domain}`);
-      console.log(dim(`  Run \`starkbot connect\` to set up the gateway connection.`));
+      printWarning("No credits available. Run `starkbot subscribe` to add credits first.");
       return;
     }
 
-    if (!me.subscription || me.subscription.status !== "active") {
-      spin.stop();
-      printWarning("No active subscription. Run `starkbot subscribe` first.");
-      return;
-    }
-
+    // Always call the backend — it checks whether the infra service is
+    // actually running and re-provisions if the old deployment was removed.
+    // The DB may still say "active" with a stale domain after suspension.
     spin.text = "Provisioning your Starkbot instance...";
 
     const result = await client.provision();

@@ -3,6 +3,7 @@ import { loadCredentials, isJwtExpired, requireCredentials, updateCredentials } 
 import { FlashClient, type InstanceSummary } from "../lib/flash-client.js";
 import { banner, printSuccess, printWarning, dim, bold, spinner } from "../lib/ui.js";
 import { loginCommand } from "./login.js";
+import { logoutCommand } from "./logout.js";
 import { subscribeCommand } from "./subscribe.js";
 import { provisionCommand } from "./provision.js";
 import { connectCommand } from "./connect.js";
@@ -11,14 +12,32 @@ import { chatReplCommand } from "./chat.js";
 export async function wizardCommand() {
   banner();
 
-  // Step 1: Login
-  const creds = loadCredentials();
+  // Step 1: Login / account selection
+  let creds = loadCredentials();
   if (!creds || isJwtExpired(creds)) {
     console.log(bold("  Step 1: Login with X\n"));
     await loginCommand();
     console.log();
   } else {
-    printSuccess(`Logged in as @${creds.username}`);
+    const { accountAction } = await inquirer.prompt([
+      {
+        type: "list",
+        name: "accountAction",
+        message: `Logged in as @${creds.username}`,
+        choices: [
+          { name: `Continue as @${creds.username}`, value: "continue" },
+          { name: "Sign out", value: "signout" },
+        ],
+      },
+    ]);
+
+    if (accountAction === "signout") {
+      await logoutCommand();
+      console.log(bold("\n  Login with X\n"));
+      await loginCommand();
+      console.log();
+      creds = loadCredentials();
+    }
   }
 
   // Step 2: Check account info
@@ -79,7 +98,7 @@ export async function wizardCommand() {
       createSpin.start();
       try {
         me = await client.createInstance(displayName || undefined);
-        updateCredentials({ tenant_id: me.tenant.id, gateway_token: undefined, instance_domain: undefined });
+        updateCredentials({ jwt: me.jwt, tenant_id: me.tenant.id, gateway_token: undefined, instance_domain: undefined });
         createSpin.succeed("Instance created");
       } catch (err: any) {
         createSpin.fail("Failed to create instance");
@@ -92,7 +111,7 @@ export async function wizardCommand() {
       switchSpin.start();
       try {
         me = await client.switchInstance(instanceChoice);
-        updateCredentials({ tenant_id: me.tenant.id, gateway_token: undefined, instance_domain: undefined });
+        updateCredentials({ jwt: me.jwt, tenant_id: me.tenant.id, gateway_token: undefined, instance_domain: undefined });
         switchSpin.succeed(`Switched to instance ${me.tenant.domain || instanceChoice}`);
       } catch (err: any) {
         switchSpin.fail("Failed to switch instance");
@@ -105,8 +124,12 @@ export async function wizardCommand() {
     console.log();
   }
 
-  // Step 4: Subscription
-  if (!me.subscription || me.subscription.status !== "active") {
+  // Step 4: Credits check
+  const creditBalance = me.credits?.balance ?? 0;
+  const hasCredits = creditBalance > 0;
+  const hasSubscription = me.subscription && me.subscription.status === "active";
+
+  if (!hasCredits && !hasSubscription) {
     console.log(bold("\n  Subscribe\n"));
     await subscribeCommand();
 
@@ -117,23 +140,22 @@ export async function wizardCommand() {
       return;
     }
 
-    if (!me.subscription || me.subscription.status !== "active") {
-      printWarning("Subscription required to continue. Run `starkbot subscribe` when ready.");
+    const recheckCredits = me.credits?.balance ?? 0;
+    const recheckSub = me.subscription && me.subscription.status === "active";
+    if (recheckCredits <= 0 && !recheckSub) {
+      printWarning("Credits required to continue. Run `starkbot subscribe` when ready.");
       return;
     }
     console.log();
   } else {
-    printSuccess(`Subscription active (${me.subscription.days_remaining} days remaining)`);
+    const formattedCredits = (creditBalance / 1_000_000).toFixed(2);
+    printSuccess(`$${formattedCredits} credits available`);
   }
 
-  // Step 5: Provision
-  if (me.tenant.status !== "active" || !me.tenant.domain) {
-    console.log(bold("\n  Provision your bot\n"));
-    await provisionCommand();
-    console.log();
-  } else {
-    printSuccess(`Instance running at ${me.tenant.domain}`);
-  }
+  // Step 5: Provision (always run — backend verifies infra is actually up)
+  console.log(bold("\n  Provision your bot\n"));
+  await provisionCommand();
+  console.log();
 
   // Step 6: Connect gateway
   const updatedCreds = loadCredentials();
