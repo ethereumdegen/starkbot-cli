@@ -1,6 +1,6 @@
 {
   "name": "starkbot-cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "CLI for Starkbot — login, provision, and chat with your bot from the terminal",
   "type": "module",
   "bin": {

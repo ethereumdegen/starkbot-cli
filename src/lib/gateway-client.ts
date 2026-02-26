@@ -44,6 +44,9 @@ export interface SseEvent {
   type: string;
   content?: string;
   tool_name?: string;
+  parameters?: Record<string, unknown>;
+  success?: boolean;
+  duration_ms?: number;
   label?: string;
   agent_subtype?: string;
   error?: string;

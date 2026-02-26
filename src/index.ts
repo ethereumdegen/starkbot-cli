@@ -6,7 +6,7 @@ const program = new Command();
 program
   .name("starkbot")
   .description("CLI for Starkbot — login, provision, and chat with your bot")
-  .version("0.3.0")
+  .version("0.3.1")
   .addHelpCommand("help", "Show help for a command");
 
 program

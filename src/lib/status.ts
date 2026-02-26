@@ -6,6 +6,8 @@ const subtypeColor = chalk.hex("#7C3AED").bold;
 const toolColor = chalk.yellow;
 const subagentColor = chalk.cyan;
 const dimText = chalk.dim;
+const successMark = chalk.green("✅");
+const failMark = chalk.red("❌");
 
 export class StatusTracker {
   private spinner: Ora;
@@ -21,10 +23,12 @@ export class StatusTracker {
   handleEvent(event: SseEvent) {
     switch (event.type) {
       case "tool_call":
+        this.printToolCall(event);
         this.addTool(event.tool_name ?? "unknown");
         break;
       case "tool_result":
         this.removeTool(event.tool_name ?? "unknown");
+        this.printToolResult(event);
         break;
       case "subagent_spawned":
         this.addSubagent(event.label ?? "?", event.agent_subtype);
@@ -54,6 +58,35 @@ export class StatusTracker {
         this.finish();
         break;
     }
+  }
+
+  private printToolCall(event: SseEvent) {
+    const name = event.tool_name ?? "unknown";
+    this.pauseForText();
+    console.log(dimText(`  🔧 ${toolColor("Calling:")} ${chalk.bold(name)}`));
+    this.resumeAfterText();
+  }
+
+  private printToolResult(event: SseEvent) {
+    const name = event.tool_name ?? "unknown";
+    const ok = event.success !== false;
+    const mark = ok ? successMark : failMark;
+    const durationStr = event.duration_ms != null ? ` ${dimText(`(${event.duration_ms}ms)`)}` : "";
+
+    this.pauseForText();
+
+    // Show result summary line
+    console.log(dimText(`  ${mark} ${chalk.bold(name)}${durationStr}`));
+
+    // For failed tool results with content, show error snippet
+    if (!ok && event.content) {
+      const snippet = event.content.length > 200
+        ? event.content.slice(0, 200) + "..."
+        : event.content;
+      console.log(dimText(`     ${chalk.red(snippet)}`));
+    }
+
+    this.resumeAfterText();
   }
 
   private prefix(): string {
@@ -112,7 +145,7 @@ export class StatusTracker {
     // Show active tools
     if (this.activeTools.length > 0) {
       const names = this.activeTools.map((t) => toolColor(t)).join(", ");
-      parts.push(`calling ${names}`);
+      parts.push(`running ${names}`);
     }
 
     if (parts.length === 0) {
