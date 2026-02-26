@@ -1,4 +1,4 @@
-import { requireCredentials } from "../lib/credentials.js";
+import { requireCredentials, getInstanceUrl } from "../lib/credentials.js";
 import { GatewayClient } from "../lib/gateway-client.js";
 import { spinner, printError, dim, info, bold } from "../lib/ui.js";
 
@@ -9,7 +9,7 @@ export async function sessionsCommand() {
   }
 
   const gw = new GatewayClient(
-    `https://${creds.instance_domain}`,
+    getInstanceUrl(creds),
     creds.gateway_token
   );
 

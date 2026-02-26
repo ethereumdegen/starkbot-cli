@@ -1,5 +1,5 @@
 import inquirer from "inquirer";
-import { requireCredentials, updateCredentials } from "../lib/credentials.js";
+import { requireCredentials, updateCredentials, getInstanceUrl } from "../lib/credentials.js";
 import { FlashClient } from "../lib/flash-client.js";
 import { GatewayClient } from "../lib/gateway-client.js";
 import { spinner, printSuccess, printError, printWarning, dim } from "../lib/ui.js";
@@ -29,7 +29,7 @@ export async function connectCommand(opts: ConnectOptions = {}) {
     spin.start();
 
     try {
-      const gw = new GatewayClient(`https://${domain}`, opts.token);
+      const gw = new GatewayClient(creds.instance_url ?? `https://${domain}`, opts.token);
       const ok = await gw.ping();
       spin.stop();
 
@@ -62,7 +62,7 @@ export async function connectCommand(opts: ConnectOptions = {}) {
 
     spin.text = "Testing connection...";
 
-    const gw = new GatewayClient(`https://${domain}`, token);
+    const gw = new GatewayClient(creds.instance_url ?? `https://${domain}`, token);
     const ok = await gw.ping();
 
     spin.stop();

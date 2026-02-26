@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline/promises";
-import { requireCredentials, updateCredentials, loadCredentials } from "../lib/credentials.js";
+import { requireCredentials, updateCredentials, loadCredentials, getInstanceUrl } from "../lib/credentials.js";
 import { FlashClient } from "../lib/flash-client.js";
 import { GatewayClient, type SseEvent } from "../lib/gateway-client.js";
 import { StatusTracker } from "../lib/status.js";
@@ -13,7 +13,7 @@ function requireGateway() {
     );
   }
   return new GatewayClient(
-    `https://${creds.instance_domain}`,
+    getInstanceUrl(creds),
     creds.gateway_token
   );
 }
@@ -31,7 +31,8 @@ async function tryRefreshToken(): Promise<GatewayClient | null> {
     const client = new FlashClient(creds.jwt);
     const { token, domain } = await client.getGatewayToken();
     updateCredentials({ gateway_token: token, instance_domain: domain });
-    const gw = new GatewayClient(`https://${domain}`, token);
+    const url = creds.instance_url ?? `https://${domain}`;
+    const gw = new GatewayClient(url, token);
     const ok = await gw.ping();
     if (ok) {
       printSuccess("Gateway token refreshed automatically.");
@@ -163,7 +164,8 @@ export async function chatReplCommand() {
               const creds = requireCredentials();
               const domain = creds.instance_domain!;
               updateCredentials({ gateway_token: newToken });
-              gw = new GatewayClient(`https://${domain}`, newToken);
+              const url = creds.instance_url ?? `https://${domain}`;
+              gw = new GatewayClient(url, newToken);
               const ok = await gw.ping();
               if (ok) {
                 printSuccess(`Reconnected to ${domain}`);

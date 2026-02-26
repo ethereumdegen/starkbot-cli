@@ -79,7 +79,12 @@ async function externalLogin() {
     {
       type: "input",
       name: "instanceUrl",
-      message: "Instance URL (e.g. https://mybot.example.com):",
+      message: "Instance URL (e.g. mybot.example.com):",
+      filter: (val: string) => {
+        const v = val.trim();
+        if (v && !/^https?:\/\//i.test(v)) return `http://${v}`;
+        return v;
+      },
       validate: (val: string) => {
         if (!val.trim()) return "Instance URL is required";
         try {
@@ -123,6 +128,7 @@ async function externalLogin() {
       tenant_id: "",
       gateway_token: token,
       instance_domain: domain,
+      instance_url: baseUrl,
       mode: "external",
     });
 

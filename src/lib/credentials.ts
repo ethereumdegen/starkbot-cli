@@ -8,6 +8,7 @@ export interface Credentials {
   tenant_id: string;
   gateway_token?: string;
   instance_domain?: string;
+  instance_url?: string;
   jwt_expires_at?: string;
   mode?: "x" | "external";
 }
@@ -68,6 +69,13 @@ export function isJwtExpired(creds: Credentials): boolean {
   } catch {
     return true;
   }
+}
+
+/** Get the instance base URL, preferring stored instance_url over https:// + domain */
+export function getInstanceUrl(creds: Credentials): string {
+  if (creds.instance_url) return creds.instance_url;
+  if (creds.instance_domain) return `https://${creds.instance_domain}`;
+  throw new Error("No instance URL configured. Run `starkbot login` or `starkbot connect` first.");
 }
 
 /** Get credentials or throw with helpful message */
