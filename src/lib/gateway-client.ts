@@ -40,6 +40,18 @@ export interface NewSessionResponse {
   session_id: number;
 }
 
+export interface ModuleInfo {
+  name: string;
+  description: string;
+  version: string;
+  has_tui: boolean;
+}
+
+export interface ModulesResponse {
+  success: boolean;
+  modules: ModuleInfo[];
+}
+
 export interface SseEvent {
   type: string;
   content?: string;
@@ -192,6 +204,100 @@ export class GatewayClient {
     }
 
     return resp.json() as Promise<MessagesResponse>;
+  }
+
+  /** List installed modules */
+  async listModules(): Promise<ModulesResponse> {
+    const url = `${this.baseUrl}/api/gateway/modules`;
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: this.headers(),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`HTTP ${resp.status}: ${text}`);
+    }
+
+    return resp.json() as Promise<ModulesResponse>;
+  }
+
+  /** Fetch TUI frame for a module */
+  async fetchTuiFrame(
+    moduleName: string,
+    width: number,
+    height: number,
+    state?: { selected: number; scroll: number },
+  ): Promise<{ ansi: string; actions?: any[] }> {
+    let url = `${this.baseUrl}/api/gateway/modules/${moduleName}/tui/stream?width=${width}&height=${height}`;
+    if (state) {
+      url += `&selected=${state.selected}&scroll=${state.scroll}`;
+    }
+
+    const resp = await fetch(url, {
+      headers: this.headers(),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`HTTP ${resp.status}: ${text}`);
+    }
+
+    // Parse SSE — take first tui_frame event
+    if (!resp.body) throw new Error("No response body");
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      let pos: number;
+      while ((pos = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, pos);
+        buffer = buffer.slice(pos + 2);
+
+        let eventName = "";
+        const dataLines: string[] = [];
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("event: ")) eventName = line.slice(7).trim();
+          else if (line.startsWith("data: ")) dataLines.push(line.slice(6));
+        }
+
+        if (eventName === "tui_frame") {
+          const data = JSON.parse(dataLines.join("\n"));
+          reader.cancel();
+          return { ansi: data.ansi ?? "", actions: data.actions };
+        }
+        if (eventName === "error") {
+          const data = JSON.parse(dataLines.join("\n"));
+          reader.cancel();
+          throw new Error(data.error ?? "Unknown TUI error");
+        }
+      }
+    }
+
+    throw new Error("No TUI frame received");
+  }
+
+  /** Post a TUI action to a module */
+  async postTuiAction(
+    moduleName: string,
+    action: string,
+    state: { selected: number; scroll: number },
+    inputs?: string[],
+  ): Promise<{ ok: boolean; message?: string; error?: string }> {
+    const url = `${this.baseUrl}/api/gateway/modules/${moduleName}/tui/action`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ action, state, inputs }),
+    });
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
+    return resp.json() as Promise<{ ok: boolean; message?: string; error?: string }>;
   }
 
   /** Simple health check */

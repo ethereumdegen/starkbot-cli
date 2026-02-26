@@ -73,6 +73,35 @@ program
     }
   });
 
+// ==================== Module Management ====================
+
+const modules = program
+  .command("modules")
+  .description("List and connect to module TUI dashboards")
+  .addHelpCommand("help", "Show help for module commands");
+
+modules
+  .command("list")
+  .description("List installed modules")
+  .action(async () => {
+    const { modulesListCommand } = await import("./commands/modules.js");
+    await modulesListCommand();
+  });
+
+modules
+  .command("connect <name>")
+  .description("Connect to a module's TUI dashboard")
+  .action(async (name: string) => {
+    const { modulesConnectCommand } = await import("./commands/modules.js");
+    await modulesConnectCommand(name);
+  });
+
+// Default: `starkbot modules` with no subcommand → list
+modules.action(async () => {
+  const { modulesListCommand } = await import("./commands/modules.js");
+  await modulesListCommand();
+});
+
 // ==================== Instance Management ====================
 
 const instances = program

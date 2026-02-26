@@ -182,6 +182,26 @@ export async function chatReplCommand() {
         break;
       }
 
+      case "/modules":
+      case "/modules list": {
+        try {
+          const resp = await gw.listModules();
+          if (resp.modules.length === 0) {
+            console.log(`${prefix.system} No modules installed.`);
+          } else {
+            console.log(`${prefix.system} Installed modules:`);
+            for (const m of resp.modules) {
+              const tui = m.has_tui ? info("[TUI]") : "";
+              console.log(`  ${info(m.name)} ${dim(m.version)} ${tui} ${dim(m.description)}`);
+            }
+            console.log(dim("  Use /modules connect <name> to open a TUI dashboard"));
+          }
+        } catch (err: any) {
+          console.log(`${prefix.error} ${err.message}`);
+        }
+        break;
+      }
+
       case "/help":
         console.log(`${prefix.system} Commands:`);
         console.log(`  ${info("/new")}      — Start a new session`);
@@ -189,11 +209,27 @@ export async function chatReplCommand() {
         console.log(
           `  ${info("/history <id>")} — Show message history`
         );
+        console.log(`  ${info("/modules")}  — List installed modules`);
+        console.log(`  ${info("/modules connect <name>")} — Open module TUI`);
         console.log(`  ${info("/connect")}  — Refresh gateway token`);
         console.log(`  ${info("/quit")}     — Exit`);
         break;
 
       default:
+        if (trimmed.startsWith("/modules connect ")) {
+          const name = trimmed.slice("/modules connect ".length).trim();
+          if (!name) {
+            console.log(`${prefix.system} Usage: /modules connect <module_name>`);
+          } else {
+            // Close readline, launch TUI, then it will exit the process
+            rl.close();
+            const { modulesConnectCommand } = await import("./modules.js");
+            await modulesConnectCommand(name);
+            return;
+          }
+          break;
+        }
+
         if (trimmed.startsWith("/history")) {
           const parts = trimmed.split(/\s+/);
           if (parts.length < 2) {
