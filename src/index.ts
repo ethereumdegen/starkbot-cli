@@ -119,6 +119,17 @@ instances.action(async () => {
   await instancesListCommand();
 });
 
+// ==================== Dashboards ====================
+
+program
+  .command("dashboard [module]")
+  .description("View a module's TUI dashboard")
+  .option("-w, --watch [seconds]", "Auto-refresh interval (default: 5s)")
+  .action(async (module?: string, opts?: { watch?: string | boolean }) => {
+    const { dashboardCommand } = await import("./commands/dashboard.js");
+    await dashboardCommand(module, opts);
+  });
+
 // ==================== Sessions ====================
 
 program
